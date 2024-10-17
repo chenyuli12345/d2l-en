@@ -116,6 +116,7 @@ class HyperParameters:
         """Save function arguments into class attributes.
     
         Defined in :numref:`sec_utils`"""
+        #inspect模块用于检查和获取有关活动对象的信息，例如模块、类、方法、函数、帧对象和代码对象。可用于调试、测试和理解大门
         frame = inspect.currentframe().f_back
         _, _, _, local_vars = inspect.getargvalues(frame)
         self.hparams = {k:v for k, v in local_vars.items()
@@ -232,27 +233,25 @@ class Module(d2l.nn_Module, d2l.HyperParameters):
             self.net.apply(init)
 
 class DataModule(d2l.HyperParameters):
-    """The base class of data.
-
-    Defined in :numref:`subsec_oo-design-models`"""
-    def __init__(self, root='../data', num_workers=4):
-        self.save_hyperparameters()
-
-    def get_dataloader(self, train):
+    """数据的基类，Defined in :numref:`subsec_oo-design-models`"""
+    def __init__(self, root='../data', num_workers=4): #构造函数，接受六个参数，root默认值为'../data'，num_workers默认值为4
+        self.save_hyperparameters() #调用父类的方法，保存传入的超参数（构造函数的几个传入参数被保存为self.root,self.num_workers）
+    #一个占位方法，继承类需要实现这个方法，用于获取数据集的DataLoader对象
+    def get_dataloader(self, train): #接受参数train
         raise NotImplementedError
-
+    #获取训练数据，具体方法要根据get_dataloader方法来实现
     def train_dataloader(self):
         return self.get_dataloader(train=True)
-
+    #获取验证数据，具体方法要根据get_dataloader方法来实现
     def val_dataloader(self):
         return self.get_dataloader(train=False)
-
-    def get_tensorloader(self, tensors, train, indices=slice(0, None)):
+    #调用内部函数，将数据集tensors在用indices切片后封装成一个DataLoader对象，可以像普通的Python迭代器一样进行迭代
+    def get_tensorloader(self, tensors, train, indices=slice(0, None)): #接受参数tensors（包含多个张量的可迭代对象）,train,indices（默认为slice(0,None)，表示一个切片对象，可以用来对序列（如列表、元组、字符串等）进行切片操作，None表示表示一直切到序列的末尾）
         """Defined in :numref:`sec_synthetic-regression-data`"""
-        tensors = tuple(a[indices] for a in tensors)
-        dataset = torch.utils.data.TensorDataset(*tensors)
-        return torch.utils.data.DataLoader(dataset, self.batch_size,
-                                           shuffle=train)
+        tensors = tuple(a[indices] for a in tensors) #对tensors中的每个张量进行切片操作，截取indices对应的部分
+        dataset = torch.utils.data.TensorDataset(*tensors) #创建一个数据集对象，将切片后的张量包装成一个数据集，每个样本都是一个元组
+        return torch.utils.data.DataLoader(dataset, self.batch_size, shuffle=train) #将数据集对象dataset封装成可迭代对象的类，支持按批次加载数据、打乱数据等功能，并指定每个批次的样本数量以及是否打乱数据
+        #最后返回一个DataLoader对象，可以像普通的Python迭代器一样进行迭代
 
 class Trainer(d2l.HyperParameters):
     """The base class for training models with data.
@@ -341,22 +340,21 @@ class Trainer(d2l.HyperParameters):
                 param.grad[:] *= grad_clip_val / norm
 
 class SyntheticRegressionData(d2l.DataModule):
-    """Synthetic data for linear regression.
-
+    """生成线性回归的合成数据
     Defined in :numref:`sec_synthetic-regression-data`"""
-    def __init__(self, w, b, noise=0.01, num_train=1000, num_val=1000,
-                 batch_size=32):
-        super().__init__()
-        self.save_hyperparameters()
-        n = num_train + num_val
-        self.X = d2l.randn(n, len(w))
-        noise = d2l.randn(n, 1) * noise
-        self.y = d2l.matmul(self.X, d2l.reshape(w, (-1, 1))) + b + noise
-
+    def __init__(self, w, b, noise=0.01, num_train=1000, num_val=1000, batch_size=32): #构造函数，接受参数权重向量w、偏置b、噪声noise（默认0.01）、训练样本数量num_train（默认1000）、验证样本数量num_val（默认1000）和批量大小batch_size（默认32）
+        super().__init__() #调用父类的构造函数
+        self.save_hyperparameters() #调用父类的方法，保存传入的超参数（构造函数的几个传入参数被保存为self.w,self.b,self.noise等等）
+        n = num_train + num_val #n为训练样本数量和验证样本数量之和
+        self.X = d2l.randn(n, len(w)) #创建特征X，是一个形状为n*len(w)的张量，每个元素都是从均值为0，标准差为1的正态分布中随机采样得到
+        noise = d2l.randn(n, 1) * noise #生成形状为n*1的噪声张量，每个元素都是从均值为0，标准差为1的正态分布中随机采样得到，然后乘上噪声系数noise=0.01
+        self.y = d2l.matmul(self.X, d2l.reshape(w, (-1, 1))) + b + noise #生成标签y，是特征X和权重w的矩阵乘法加上偏置b和噪声张量
+    #定义一个获取数据加载器的方法（重写d2l.DataModule中的get_dataloader方法），接受一个参数train，表示是否是训练集（这个方法调用的是父类d2l.DataModule的基于深度学习内置API的Data Loader）
     def get_dataloader(self, train):
         """Defined in :numref:`sec_synthetic-regression-data`"""
-        i = slice(0, self.num_train) if train else slice(self.num_train, None)
-        return self.get_tensorloader((self.X, self.y), train, i)
+        i = slice(0, self.num_train) if train else slice(self.num_train, None) #如果是训练集，i为从0到num_train（训练集数量）的切片，否则为从num_train（训练集数量）到最后（其实就是训练集数量+测试集数量）的切片
+        return self.get_tensorloader((self.X, self.y), train, i) #调用父类d2l.DataModule的get_tensorloader方法，传入特征X和标签y，训练集标志train和切片i
+        #最后返回一个包含所有训练集和测试集的DataLoader对象（小批量为self.batch_size），可以像普通的Python迭代器一样进行迭代
 
 class LinearRegressionScratch(d2l.Module):
     """The linear regression model implemented from scratch.
