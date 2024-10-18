@@ -202,16 +202,17 @@ class Module(d2l.nn_Module, d2l.HyperParameters):
         else: #如果是验证集
             x = self.trainer.epoch + 1 #x为epoch数+1
             n = self.trainer.num_val_batches / self.plot_valid_per_epoch #n为n为验证的总批次数（来自于d2l.Trainer中）/验证情况下每多少个epoch绘制动图（来自输入参数）
-        self.board.draw(x, d2l.numpy(d2l.to(value, d2l.cpu())),
-                        ('train_' if train else 'val_') + key,
-                        every_n=int(n)) #更新动图，？？？
+        #更新动图，传入四个参数
+        self.board.draw(x, d2l.numpy(d2l.to(value, d2l.cpu())), #x为横坐标，value为纵坐标（将value转换到cpu上，然后转换为numpy数组）
+                        ('train_' if train else 'val_') + key, #标签，根据train参数来决定标签前缀，然后前缀与key（也是一个标签）连接生成一个完整的字符串标签
+                        every_n=int(n)) #每n个epoch绘制一个点
 
     def training_step(self, batch): #接受一个参数batch
         l = self.loss(self(*batch[:-1]), batch[-1]) #调用此类中的另一个方法loss，
-        self.plot('loss', l, train=True)
-        return l
+        self.plot('loss', l, train=True) #调用上面的plot方法，传入三个参数，key为'loss'，value为损失，train为True
+        return l #返回损失
 
-    def validation_step(self, batch):
+    def validation_step(self, batch): #接受一个参数batch
         l = self.loss(self(*batch[:-1]), batch[-1])
         self.plot('loss', l, train=False)
 
