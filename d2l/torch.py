@@ -178,40 +178,36 @@ class ProgressBoard(d2l.HyperParameters):
         display.clear_output(wait=True)
 
 class Module(d2l.nn_Module, d2l.HyperParameters):
-    """The base class of models.
-
-    Defined in :numref:`sec_oo-design`"""
-    def __init__(self, plot_train_per_epoch=2, plot_valid_per_epoch=1):
+    """模型的基类 Defined in :numref:`sec_oo-design`"""
+    def __init__(self, plot_train_per_epoch=2, plot_valid_per_epoch=1): #模型的构造函数，接受两个参数，分别代表训练情况下每多少个epoch绘制动图以及测试状态下每多少个epoch绘制动图
         super().__init__()
-        self.save_hyperparameters()
-        self.board = ProgressBoard()
+        self.save_hyperparameters() #调用父类的方法，保存传入的超参数（构造函数的几个传入参数被保存为self.plot_train_per_epoch,self.plot_valid_per_epoch）
+        self.board = ProgressBoard() #创建一个ProgressBoard实例board，用于绘制图形
 
-    def loss(self, y_hat, y):
+    def loss(self, y_hat, y): #定义损失函数，一个占位方法，继承类需要实现这个方法。接受参数为预测值和真实值
         raise NotImplementedError
 
-    def forward(self, X):
+    def forward(self, X): #定义前向传播方法
         assert hasattr(self, 'net'), 'Neural network is defined'
+        #断言self对象有net属性，否则抛出异常
         return self.net(X)
-
-    def plot(self, key, value, train):
-        """Plot a point in animation."""
-        assert hasattr(self, 'trainer'), 'Trainer is not inited'
-        self.board.xlabel = 'epoch'
-        if train:
-            x = self.trainer.train_batch_idx / \
-                self.trainer.num_train_batches
-            n = self.trainer.num_train_batches / \
-                self.plot_train_per_epoch
-        else:
-            x = self.trainer.epoch + 1
-            n = self.trainer.num_val_batches / \
-                self.plot_valid_per_epoch
+    #绘制图像的方法
+    def plot(self, key, value, train): #接受三个参数
+        """在动图中绘制一个点"""
+        assert hasattr(self, 'trainer'), 'Trainer is not inited' #断言self对象有trainer属性，否则抛出异常
+        self.board.xlabel = 'epoch' #设置动图横轴标签为epoch
+        if train: #如果是训练
+            x = self.trainer.train_batch_idx / self.trainer.num_train_batches #x为当前训练的批次号/训练的总批次数（即数据集大小/小批量大小）（这两个参数均来自于d2l.Trainer中）
+            n = self.trainer.num_train_batches / self.plot_train_per_epoch #n为训练的总批次数/训练情况下每多少个epoch绘制动图（来自输入参数）
+        else: #如果是验证集
+            x = self.trainer.epoch + 1 #x为epoch数+1
+            n = self.trainer.num_val_batches / self.plot_valid_per_epoch #n为n为验证的总批次数（来自于d2l.Trainer中）/验证情况下每多少个epoch绘制动图（来自输入参数）
         self.board.draw(x, d2l.numpy(d2l.to(value, d2l.cpu())),
                         ('train_' if train else 'val_') + key,
-                        every_n=int(n))
+                        every_n=int(n)) #更新动图，？？？
 
-    def training_step(self, batch):
-        l = self.loss(self(*batch[:-1]), batch[-1])
+    def training_step(self, batch): #接受一个参数batch
+        l = self.loss(self(*batch[:-1]), batch[-1]) #调用此类中的另一个方法loss，
         self.plot('loss', l, train=True)
         return l
 
@@ -267,11 +263,11 @@ class Trainer(d2l.HyperParameters):
         self.num_train_batches = len(self.train_dataloader)
         self.num_val_batches = (len(self.val_dataloader)
                                 if self.val_dataloader is not None else 0)
-
-    def prepare_model(self, model):
-        model.trainer = self
-        model.board.xlim = [0, self.max_epochs]
-        self.model = model
+    #prepare_model方法作用是将模型（传入参数model）与Trainer实例关联起来
+    def prepare_model(self, model): #传入参数为模型
+        model.trainer = self #将当前的Trainer实例（self）赋值给模型的trainer属性（使模型可以访问Trainer实例的属性和方法）
+        model.board.xlim = [0, self.max_epochs]  #获取模型的动态绘图实例board，将其横轴范围设置为0到最大的epoch（来源于传入的参数）
+        self.model = model #将传入的model赋值给Trainer实例的model属性，这使得Trainer实例可以访问和操作模型
 
     def fit(self, model, data):
         self.prepare_data(data)
