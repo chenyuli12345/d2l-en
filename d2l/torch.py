@@ -257,6 +257,7 @@ class DataModule(d2l.HyperParameters):
 
 class Trainer(d2l.HyperParameters):
     """使用数据训练模型的基类，Defined in :numref:`subsec_oo-design-models`"""
+    #初始构造函数（不使用GPU），后续会重写
     def __init__(self, max_epochs, num_gpus=0, gradient_clip_val=0): #构造函数，接受三个参数，max_epochs表示最大训练轮数，num_gpus表示gpu数量（默认0不使用）和梯度裁剪值（默认0）
         self.save_hyperparameters() #调用父类的方法，保存传入的超参数（构造函数的几个传入参数被保存为self.max_epochs,self.num_gpus,self.gradient_clip_val）
         assert num_gpus == 0, 'No GPU support yet' #断言使用gpu数量为0（来源于输入参数，即默认不使用）
@@ -268,7 +269,7 @@ class Trainer(d2l.HyperParameters):
         self.num_train_batches = len(self.train_dataloader) #获取训练集的批次数（即训练集数据量/小批量大小，多少个批次）
         self.num_val_batches = (len(self.val_dataloader) if self.val_dataloader is not None else 0) #获取验证集的批次数（即验证集数据量/小批量大小，多少个批次），不过这里要先判断是否存在验证集
     
-    #prepare_model方法作用是将模型（传入参数model，来源于d2l.Module）与Trainer实例关联起来
+    #初始prepare_model方法（不使用gpu，后续会重写），作用是将模型（传入参数model，来源于d2l.Module）与Trainer实例关联起来
     def prepare_model(self, model): #传入参数为模型(来源于d2l.Module)
         model.trainer = self #将当前的Trainer实例（self参数总是指向调用这个方法的实例，因此self是一个Trainer实例）赋值给模型(来源于d2l.Module)的trainer属性（使模型可以访问Trainer实例的属性和方法）
         model.board.xlim = [0, self.max_epochs]  #获取模型(来源于d2l.Module)的动态绘图实例board，将其横轴范围设置为0到最大的epoch（来源于传入的参数）
@@ -286,11 +287,11 @@ class Trainer(d2l.HyperParameters):
         for self.epoch in range(self.max_epochs): 
             self.fit_epoch()
 
-    #一个占位方法，继承类需要实现这个方法，用于训练模型（一个epoch）
+    #初始fit_epoch方法（后续会重写），一个占位方法，继承类需要实现这个方法，用于训练模型（一个epoch）
     def fit_epoch(self):
         raise NotImplementedError
 
-    #直接返回输入的数据小批次（相当于不使用GPU），这提供了一个钩子，在之后重新定义
+    #初始prepare_batch方法（不使用gpu，后续会重写），直接返回输入的数据小批次（相当于不使用GPU），这提供了一个钩子，在之后重新定义
     def prepare_batch(self, batch): #接受参数batch
         """Defined in :numref:`sec_linear_scratch`"""
         return batch #直接返回输入的batch
@@ -340,13 +341,13 @@ class Trainer(d2l.HyperParameters):
         self.model = model #将传入的model(来源于d2l.Module)赋值给Trainer实例的model属性，这使得Trainer实例可以访问和操作模型
 
     #用于对模型的梯度进行裁剪，以防止梯度爆炸
-    def clip_gradients(self, grad_clip_val, model): #接受两个参数，
+    def clip_gradients(self, grad_clip_val, model): #接受两个参数，梯度裁剪值（来源于输入参数）和模型(来源于d2l.Module)
         """Defined in :numref:`sec_rnn-scratch`"""
-        params = [p for p in model.parameters() if p.requires_grad]
-        norm = torch.sqrt(sum(torch.sum((p.grad ** 2)) for p in params))
-        if norm > grad_clip_val:
-            for param in params:
-                param.grad[:] *= grad_clip_val / norm
+        params = [p for p in model.parameters() if p.requires_grad] #获取模型参数中所有需要计算梯度的参数
+        norm = torch.sqrt(sum(torch.sum((p.grad ** 2)) for p in params)) #计算筛选后参数的梯度的平方和，然后开方，即计算筛选后参数的L2范数
+        if norm > grad_clip_val: #如果参数L2范数大于梯度裁剪值
+            for param in params: #对于筛选后的每个参数
+                param.grad[:] *= grad_clip_val / norm #将每个参数的梯度按比例缩小（不超过梯度裁剪值）
 
 class SyntheticRegressionData(d2l.DataModule):
     """生成线性回归的合成数据
