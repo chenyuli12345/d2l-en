@@ -207,27 +207,32 @@ class Module(d2l.nn_Module, d2l.HyperParameters):
                         ('train_' if train else 'val_') + key, #标签，根据train参数来决定标签前缀，然后前缀与key（也是一个标签）连接生成一个完整的字符串标签
                         every_n=int(n)) #每n个epoch绘制一个点
 
-    def training_step(self, batch): #接受一个参数batch
-        l = self.loss(self(*batch[:-1]), batch[-1]) #调用此类中的另一个方法loss，
+    #用于打印并获取训练损失的方法
+    def training_step(self, batch): #接受一个参数batch，表示数据批次
+        l = self.loss(self(*batch[:-1]), batch[-1]) #调用此类中的另一个方法loss，获取训练集损失？？？
         self.plot('loss', l, train=True) #调用上面的plot方法，传入三个参数，key为'loss'，value为损失，train为True
         return l #返回损失
 
-    def validation_step(self, batch): #接受一个参数batch
-        l = self.loss(self(*batch[:-1]), batch[-1])
-        self.plot('loss', l, train=False)
-
+    #用于打印验证损失的方法
+    def validation_step(self, batch): #接受一个参数batch，表示数据批次
+        l = self.loss(self(*batch[:-1]), batch[-1]) #调用此类中的另一个方法loss，获取测试集的损失
+        self.plot('loss', l, train=False) #调用上面的plot方法，传入三个参数，key为'loss'，value为损失，train为True
+    
+    #返回用于更新可学习参数的优化方法或其列表（第一个方法，后续会被覆盖，需要在继承类实现这个方法）
     def configure_optimizers(self):
         raise NotImplementedError
-
+    
+    #返回用于更新可学习参数的优化方法或其列表（第二个方法，也是最终使用的configure_optimizers方法）
     def configure_optimizers(self):
         """Defined in :numref:`sec_classification`"""
-        return torch.optim.SGD(self.parameters(), lr=self.lr)
-
-    def apply_init(self, inputs, init=None):
+        return torch.optim.SGD(self.parameters(), lr=self.lr) #返回一个优化器，使用SGD算法，参数为模型的参数和学习率（应该来源于继承d2l.Module的模型）
+    
+    #该方法在前向传播后用自定义的初始化函数来初始化模型的参数
+    def apply_init(self, inputs, init=None): #接受两个参数，分别为输入和init（一般是一个初始化方法）
         """Defined in :numref:`sec_lazy_init`"""
-        self.forward(*inputs)
-        if init is not None:
-            self.net.apply(init)
+        self.forward(*inputs) #将inputs解包作为参数传递给网络进行前向传播
+        if init is not None: #若传入的init不为None
+            self.net.apply(init) #对模型的每个子模块应用init方法（来源于传入参数）
 
 class DataModule(d2l.HyperParameters):
     """数据的基类，Defined in :numref:`subsec_oo-design-models`"""
@@ -251,84 +256,91 @@ class DataModule(d2l.HyperParameters):
         #最后返回一个DataLoader对象，可以像普通的Python迭代器一样进行迭代
 
 class Trainer(d2l.HyperParameters):
-    """The base class for training models with data.
+    """使用数据训练模型的基类，Defined in :numref:`subsec_oo-design-models`"""
+    def __init__(self, max_epochs, num_gpus=0, gradient_clip_val=0): #构造函数，接受三个参数，max_epochs表示最大训练轮数，num_gpus表示gpu数量（默认0不使用）和梯度裁剪值（默认0）
+        self.save_hyperparameters() #调用父类的方法，保存传入的超参数（构造函数的几个传入参数被保存为self.max_epochs,self.num_gpus,self.gradient_clip_val）
+        assert num_gpus == 0, 'No GPU support yet' #断言使用gpu数量为0（来源于输入参数，即默认不使用）
 
-    Defined in :numref:`subsec_oo-design-models`"""
-    def __init__(self, max_epochs, num_gpus=0, gradient_clip_val=0):
-        self.save_hyperparameters()
-        assert num_gpus == 0, 'No GPU support yet'
+    ##用于准备数据集（来源于d2l.DataModule）
+    def prepare_data(self, data): #接受参数data
+        self.train_dataloader = data.train_dataloader() #获取训练数据（来源于d2l.DataModule）
+        self.val_dataloader = data.val_dataloader() #获取验证数据（来源于d2l.DataModule）
+        self.num_train_batches = len(self.train_dataloader) #获取训练集的批次数（即训练集数据量/小批量大小，多少个批次）
+        self.num_val_batches = (len(self.val_dataloader) if self.val_dataloader is not None else 0) #获取验证集的批次数（即验证集数据量/小批量大小，多少个批次），不过这里要先判断是否存在验证集
+    
+    #prepare_model方法作用是将模型（传入参数model，来源于d2l.Module）与Trainer实例关联起来
+    def prepare_model(self, model): #传入参数为模型(来源于d2l.Module)
+        model.trainer = self #将当前的Trainer实例（self参数总是指向调用这个方法的实例，因此self是一个Trainer实例）赋值给模型(来源于d2l.Module)的trainer属性（使模型可以访问Trainer实例的属性和方法）
+        model.board.xlim = [0, self.max_epochs]  #获取模型(来源于d2l.Module)的动态绘图实例board，将其横轴范围设置为0到最大的epoch（来源于传入的参数）
+        self.model = model #将传入的model(来源于d2l.Module)赋值给Trainer实例的model属性，这使得Trainer实例可以访问和操作模型
 
-    def prepare_data(self, data):
-        self.train_dataloader = data.train_dataloader()
-        self.val_dataloader = data.val_dataloader()
-        self.num_train_batches = len(self.train_dataloader)
-        self.num_val_batches = (len(self.val_dataloader)
-                                if self.val_dataloader is not None else 0)
-    #prepare_model方法作用是将模型（传入参数model）与Trainer实例关联起来
-    def prepare_model(self, model): #传入参数为模型
-        model.trainer = self #将当前的Trainer实例（self）赋值给模型的trainer属性（使模型可以访问Trainer实例的属性和方法）
-        model.board.xlim = [0, self.max_epochs]  #获取模型的动态绘图实例board，将其横轴范围设置为0到最大的epoch（来源于传入的参数）
-        self.model = model #将传入的model赋值给Trainer实例的model属性，这使得Trainer实例可以访问和操作模型
-
-    def fit(self, model, data):
-        self.prepare_data(data)
-        self.prepare_model(model)
-        self.optim = model.configure_optimizers()
-        self.epoch = 0
-        self.train_batch_idx = 0
-        self.val_batch_idx = 0
-        for self.epoch in range(self.max_epochs):
+    #遍历整个数据集max_epochs次来训练模型
+    def fit(self, model, data): #接受参数为模型(来源于d2l.Module)和数据集（来源于d2l.DataModule）
+        self.prepare_data(data) #调用自己类的prepare_data方法获取数据集
+        self.prepare_model(model) #调用自己类的prepare_model方法获取模型（并与Trainer实例关联）
+        self.optim = model.configure_optimizers() #调用模型的configure_optimizers方法（来源于d2l.Module）获取优化器
+        self.epoch = 0 #初始化epoch
+        self.train_batch_idx = 0 #初始化当前训练的批次（第几个，即索引）
+        self.val_batch_idx = 0 #初始化当前验证的批次（第几个，即索引）
+        #执行下面的fit_epoch方法max_epochs次（来源于类的输入参数）
+        for self.epoch in range(self.max_epochs): 
             self.fit_epoch()
 
+    #一个占位方法，继承类需要实现这个方法，用于训练模型（一个epoch）
     def fit_epoch(self):
         raise NotImplementedError
 
-    def prepare_batch(self, batch):
+    #直接返回输入的数据小批次（相当于不使用GPU），这提供了一个钩子，在之后重新定义
+    def prepare_batch(self, batch): #接受参数batch
         """Defined in :numref:`sec_linear_scratch`"""
-        return batch
+        return batch #直接返回输入的batch
 
+    #重新定义的fit_epoch方法，用于训练模型一次（使用GPU）
     def fit_epoch(self):
         """Defined in :numref:`sec_linear_scratch`"""
-        self.model.train()
-        for batch in self.train_dataloader:
-            loss = self.model.training_step(self.prepare_batch(batch))
-            self.optim.zero_grad()
-            with torch.no_grad():
-                loss.backward()
-                if self.gradient_clip_val > 0:  # To be discussed later
-                    self.clip_gradients(self.gradient_clip_val, self.model)
-                self.optim.step()
-            self.train_batch_idx += 1
-        if self.val_dataloader is None:
-            return
-        self.model.eval()
-        for batch in self.val_dataloader:
-            with torch.no_grad():
-                self.model.validation_step(self.prepare_batch(batch))
-            self.val_batch_idx += 1
+        self.model.train() #将模型(来源于d2l.Module)设置为训练模式
+        for batch in self.train_dataloader: #对于训练数据（来源于d2l.DataModule）的每一个批次
+            loss = self.model.training_step(self.prepare_batch(batch)) #调用模型的training_step方法（来源于d2l.Module）打印并获取训练集的损失
+            self.optim.zero_grad() #将优化器（来源于fit）的梯度清空
+            with torch.no_grad(): #不计算梯度？？？
+                loss.backward() #反向传播loss
+                if self.gradient_clip_val > 0:  # To be discussed later，如果梯度裁剪值大于0
+                    self.clip_gradients(self.gradient_clip_val, self.model) #调用下面的clip_gradients方法，传入梯度裁剪值（来源于输入）模型(来源于d2l.Module)
+                self.optim.step() #更新模型参数
+            self.train_batch_idx += 1 #在一个小批次的训练结束后更新当前批次的索引
+        if self.val_dataloader is None: #如果没有验证数据（来源于d2l.DataModule）
+            return #直接返回
+        #如果有验证数据（来源于d2l.DataModule）则继续进行下一步
+        self.model.eval() #将模型(来源于d2l.Module)设置为评估模式
+        for batch in self.val_dataloader: #对于验证数据（来源于d2l.DataModule）的每一个批次
+            with torch.no_grad(): #不计算梯度
+                self.model.validation_step(self.prepare_batch(batch)) #调用模型的validation_step方法（来源于d2l.Module）打印验证集的损失
+            self.val_batch_idx += 1 #在一个小批次
 
-    def __init__(self, max_epochs, num_gpus=0, gradient_clip_val=0):
+    #重新定义的构造函数，多定义了可用GPU列表
+    def __init__(self, max_epochs, num_gpus=0, gradient_clip_val=0): #接受三个参数，max_epochs表示最大训练轮数，num_gpus表示gpu数量（默认0不使用）和梯度裁剪值（默认0）
         """Defined in :numref:`sec_use_gpu`"""
-        self.save_hyperparameters()
-        self.gpus = [d2l.gpu(i) for i in range(min(num_gpus, d2l.num_gpus()))]
+        self.save_hyperparameters() #调用父类的方法，保存传入的超参数（构造函数的几个传入参数被保存为self.max_epochs,self.num_gpus,self.gradient_clip_val）
+        self.gpus = [d2l.gpu(i) for i in range(min(num_gpus, d2l.num_gpus()))] #初始化一个包含可用GPU设备的列表，取系统可用gpu数量（d2l.num_gpus()）和自定义使用gpu数量（num_gpus，来源于输入参数）的较小值，然后创建GPU列表（d2l.gpu(i)获取第i个GPU设备）
     
-
+    #重新定义的prepare_batch方法，将数据批次传递到gpu上
     def prepare_batch(self, batch):
         """Defined in :numref:`sec_use_gpu`"""
-        if self.gpus:
-            batch = [d2l.to(a, self.gpus[0]) for a in batch]
-        return batch
+        if self.gpus: #如果有可用GPU（来自于重新定义的构造函数）
+            batch = [d2l.to(a, self.gpus[0]) for a in batch] #将数据批次batch中的每个元素转移到可用的第一个gpu上
+        return batch #返回移动到第一块GPU上的数据批次
     
-
+    #重新定义的prepare_model方法，作用是将模型（传入参数model，来源于d2l.Module）与Trainer实例关联起来，多了一步把
     def prepare_model(self, model):
         """Defined in :numref:`sec_use_gpu`"""
-        model.trainer = self
-        model.board.xlim = [0, self.max_epochs]
-        if self.gpus:
-            model.to(self.gpus[0])
-        self.model = model
+        model.trainer = self #将当前的Trainer实例（self参数总是指向调用这个方法的实例，因此self是一个Trainer实例）赋值给模型(来源于d2l.Module)的trainer属性（使模型可以访问Trainer实例的属性和方法）
+        model.board.xlim = [0, self.max_epochs] #获取模型(来源于d2l.Module)的动态绘图实例board，将其横轴范围设置为0到最大的epoch（来源于传入的参数）
+        if self.gpus: #如果GPU可用（来自于重新定义的构造函数）
+            model.to(self.gpus[0]) #将模型转移到可用的第一个GPU上
+        self.model = model #将传入的model(来源于d2l.Module)赋值给Trainer实例的model属性，这使得Trainer实例可以访问和操作模型
 
-    def clip_gradients(self, grad_clip_val, model):
+    #用于对模型的梯度进行裁剪，以防止梯度爆炸
+    def clip_gradients(self, grad_clip_val, model): #接受两个参数，
         """Defined in :numref:`sec_rnn-scratch`"""
         params = [p for p in model.parameters() if p.requires_grad]
         norm = torch.sqrt(sum(torch.sum((p.grad ** 2)) for p in params))
