@@ -184,9 +184,11 @@ class Module(d2l.nn_Module, d2l.HyperParameters):
         self.save_hyperparameters() #调用父类的方法，保存传入的超参数（构造函数的几个传入参数被保存为self.plot_train_per_epoch,self.plot_valid_per_epoch）
         self.board = ProgressBoard() #创建一个ProgressBoard实例board，用于绘制图形
 
+    #模型的损失函数
     def loss(self, y_hat, y): #定义损失函数，一个占位方法，继承类需要实现这个方法。接受参数为预测值和真实值
         raise NotImplementedError
 
+    #模型的前向传播方法
     def forward(self, X): #定义前向传播方法
         assert hasattr(self, 'net'), 'Neural network is defined'
         #断言self对象有net属性，否则抛出异常
@@ -208,21 +210,21 @@ class Module(d2l.nn_Module, d2l.HyperParameters):
                         every_n=int(n)) #每n个epoch绘制一个点
 
     #用于打印并获取训练损失的方法
-    def training_step(self, batch): #接受一个参数batch，表示数据批次
-        l = self.loss(self(*batch[:-1]), batch[-1]) #调用此类中的另一个方法loss，获取训练集损失？？？
+    def training_step(self, batch): #接受一个参数batch，表示数据批次，其中批次中真实值（标签）为最后一个元素，除了最后一个元素为输入特征
+        l = self.loss(self(*batch[:-1]), batch[-1]) #调用此类中的另一个方法loss，获取训练集损失（这里的self()相当于利用所有数据进行前向传播的预测值，最后一个元素相当于真实值）
         self.plot('loss', l, train=True) #调用上面的plot方法，传入三个参数，key为'loss'，value为损失，train为True
         return l #返回损失
 
     #用于打印验证损失的方法
-    def validation_step(self, batch): #接受一个参数batch，表示数据批次
-        l = self.loss(self(*batch[:-1]), batch[-1]) #调用此类中的另一个方法loss，获取测试集的损失
+    def validation_step(self, batch): #接受一个参数batch，表示数据批次，其中批次中真实值（标签）为最后一个元素，除了最后一个元素为输入特征
+        l = self.loss(self(*batch[:-1]), batch[-1]) #调用此类中的另一个方法loss，获取验证集的损失（这里的self()相当于利用所有数据进行前向传播的预测值，最后一个元素相当于真实值）
         self.plot('loss', l, train=False) #调用上面的plot方法，传入三个参数，key为'loss'，value为损失，train为True
     
-    #返回用于更新可学习参数的优化方法或其列表（第一个方法，后续会被覆盖，需要在继承类实现这个方法）
+    #初始configure_optimizers方法，返回用于更新可学习参数的优化方法或其列表（后续会被覆盖，需要在继承类实现这个方法）
     def configure_optimizers(self):
         raise NotImplementedError
     
-    #返回用于更新可学习参数的优化方法或其列表（第二个方法，也是最终使用的configure_optimizers方法）
+    #重新定义的configure_optimizers方法，返回用于更新可学习参数的优化方法或其列表（最终使用的configure_optimizers方法）
     def configure_optimizers(self):
         """Defined in :numref:`sec_classification`"""
         return torch.optim.SGD(self.parameters(), lr=self.lr) #返回一个优化器，使用SGD算法，参数为模型的参数和学习率（应该来源于继承d2l.Module的模型）
@@ -238,15 +240,19 @@ class DataModule(d2l.HyperParameters):
     """数据的基类，Defined in :numref:`subsec_oo-design-models`"""
     def __init__(self, root='../data', num_workers=4): #构造函数，接受六个参数，root默认值为'../data'，num_workers默认值为4
         self.save_hyperparameters() #调用父类的方法，保存传入的超参数（构造函数的几个传入参数被保存为self.root,self.num_workers）
+    
     #一个占位方法，继承类需要实现这个方法，用于获取数据集的DataLoader对象
     def get_dataloader(self, train): #接受参数train
         raise NotImplementedError
+    
     #获取训练数据，具体方法要根据get_dataloader方法来实现
     def train_dataloader(self):
         return self.get_dataloader(train=True)
+    
     #获取验证数据，具体方法要根据get_dataloader方法来实现
     def val_dataloader(self):
         return self.get_dataloader(train=False)
+    
     #调用内部函数，将数据集tensors在用indices切片后封装成一个DataLoader对象，可以像普通的Python迭代器一样进行迭代
     def get_tensorloader(self, tensors, train, indices=slice(0, None)): #接受参数tensors（包含多个张量的可迭代对象）,train,indices（默认为slice(0,None)，表示一个切片对象，可以用来对序列（如列表、元组、字符串等）进行切片操作，None表示表示一直切到序列的末尾）
         """Defined in :numref:`sec_synthetic-regression-data`"""
@@ -262,7 +268,7 @@ class Trainer(d2l.HyperParameters):
         self.save_hyperparameters() #调用父类的方法，保存传入的超参数（构造函数的几个传入参数被保存为self.max_epochs,self.num_gpus,self.gradient_clip_val）
         assert num_gpus == 0, 'No GPU support yet' #断言使用gpu数量为0（来源于输入参数，即默认不使用）
 
-    ##用于准备数据集（来源于d2l.DataModule）
+    #用于准备数据集（来源于d2l.DataModule）
     def prepare_data(self, data): #接受参数data
         self.train_dataloader = data.train_dataloader() #获取训练数据（来源于d2l.DataModule）
         self.val_dataloader = data.val_dataloader() #获取验证数据（来源于d2l.DataModule）
@@ -296,7 +302,7 @@ class Trainer(d2l.HyperParameters):
         """Defined in :numref:`sec_linear_scratch`"""
         return batch #直接返回输入的batch
 
-    #重新定义的fit_epoch方法，用于训练模型一次（使用GPU）
+    #重新定义的fit_epoch方法，用于训练模型一次
     def fit_epoch(self):
         """Defined in :numref:`sec_linear_scratch`"""
         self.model.train() #将模型(来源于d2l.Module)设置为训练模式
@@ -324,14 +330,14 @@ class Trainer(d2l.HyperParameters):
         self.save_hyperparameters() #调用父类的方法，保存传入的超参数（构造函数的几个传入参数被保存为self.max_epochs,self.num_gpus,self.gradient_clip_val）
         self.gpus = [d2l.gpu(i) for i in range(min(num_gpus, d2l.num_gpus()))] #初始化一个包含可用GPU设备的列表，取系统可用gpu数量（d2l.num_gpus()）和自定义使用gpu数量（num_gpus，来源于输入参数）的较小值，然后创建GPU列表（d2l.gpu(i)获取第i个GPU设备）
     
-    #重新定义的prepare_batch方法，将数据批次传递到gpu上
+    #重新定义的prepare_batch方法，将数据批次传递到GPU上
     def prepare_batch(self, batch):
         """Defined in :numref:`sec_use_gpu`"""
         if self.gpus: #如果有可用GPU（来自于重新定义的构造函数）
             batch = [d2l.to(a, self.gpus[0]) for a in batch] #将数据批次batch中的每个元素转移到可用的第一个gpu上
         return batch #返回移动到第一块GPU上的数据批次
     
-    #重新定义的prepare_model方法，作用是将模型（传入参数model，来源于d2l.Module）与Trainer实例关联起来，多了一步把
+    #重新定义的prepare_model方法，作用是将模型（传入参数model，来源于d2l.Module）与Trainer实例关联起来，多了一步把模型转移到GPU上
     def prepare_model(self, model):
         """Defined in :numref:`sec_use_gpu`"""
         model.trainer = self #将当前的Trainer实例（self参数总是指向调用这个方法的实例，因此self是一个Trainer实例）赋值给模型(来源于d2l.Module)的trainer属性（使模型可以访问Trainer实例的属性和方法）
@@ -366,44 +372,37 @@ class SyntheticRegressionData(d2l.DataModule):
         return self.get_tensorloader((self.X, self.y), train, i) #调用父类d2l.DataModule的get_tensorloader方法，传入特征X和标签y，训练集标志train和切片i
         #最后返回一个包含所有训练集和测试集的DataLoader对象（小批量为self.batch_size），可以像普通的Python迭代器一样进行迭代
 
-class LinearRegressionScratch(d2l.Module):
-    """The linear regression model implemented from scratch.
-
-    Defined in :numref:`sec_linear_scratch`"""
-    def __init__(self, num_inputs, lr, sigma=0.01):
+class LinearRegressionScratch(d2l.Module):  #@save，继承自d2l.Module类
+    """从零开始实现线性回归模型的类"""
+    def __init__(self, num_inputs, lr, sigma=0.01): #构造函数，接受输入特征数num_inputs、学习率lr和标准差sigma（默认0.01）
         super().__init__()
-        self.save_hyperparameters()
-        self.w = d2l.normal(0, sigma, (num_inputs, 1), requires_grad=True)
-        self.b = d2l.zeros(1, requires_grad=True)
+        self.save_hyperparameters() #调用父类的方法，保存传入的超参数（构造函数的几个传入参数被保存为self.num_inputs,self.lr,self.sigma）
+        self.w = torch.normal(0, sigma, (num_inputs, 1), requires_grad=True) #初始化权重w，是一个形状为num_inputs*1的张量，每个元素都是从均值为0，标准差为sigma的正态分布中随机采样得到，需要计算梯度
+        self.b = torch.zeros(1, requires_grad=True) #初始化偏置b，是一个形状为1的张量，每个元素都是0，需要计算梯度
 
-    def forward(self, X):
-        """Defined in :numref:`sec_linear_scratch`"""
-        return d2l.matmul(X, self.w) + self.b
+    def forward(self, X): #定义前向传播方法，接受输入特征X
+        return torch.matmul(X, self.w) + self.b #返回Xw+b（无隐藏层，只有输入层和输出层）
 
-    def loss(self, y_hat, y):
-        """Defined in :numref:`sec_linear_scratch`"""
-        l = (y_hat - y) ** 2 / 2
-        return d2l.reduce_mean(l)
+    def loss(self, y_hat, y): #定义损失函数，接受预测值y_hat和真实值y
+        l = (y_hat - y) ** 2 / 2 #计算平方损失
+        return l.mean() #返回平均损失的均值（一个minibatch的几个值的平均）
 
-    def configure_optimizers(self):
-        """Defined in :numref:`sec_linear_scratch`"""
-        return SGD([self.w, self.b], self.lr)
+    def configure_optimizers(self): #定义配置优化器的方法
+        return SGD([self.w, self.b], self.lr) #返回一个SGD优化器实例，传入要优化的参数（权重w和偏置b）和学习率lr    
 
-class SGD(d2l.HyperParameters):
-    """Minibatch stochastic gradient descent.
-
-    Defined in :numref:`sec_linear_scratch`"""
-    def __init__(self, params, lr):
-        self.save_hyperparameters()
-
+class SGD(d2l.HyperParameters):  #@save，继承自d2l.HyperParameters类
+    """小批量随机梯度下降算法"""
+    def __init__(self, params, lr): #构造函数，接受参数params和学习率lr
+        self.save_hyperparameters() #调用父类的方法，保存传入的超参数（构造函数的几个传入参数被保存为self.params和self.lr）
+    #利用SGD更新参数的方法
     def step(self):
-        for param in self.params:
-            param -= self.lr * param.grad
-
-    def zero_grad(self):
-        for param in self.params:
-            if param.grad is not None:
-                param.grad.zero_()
+        for param in self.params: ##对每一个要优化的参数（来源于输入）执行操作
+            param -= self.lr * param.grad #学习率*参数梯度
+    #实现优化算法的梯度清零
+    def zero_grad(self): 
+        for param in self.params: #对每一个要优化的参数（来源于输入）执行操作
+            if param.grad is not None: #如果参数的梯度不为空
+                param.grad.zero_() #设置梯度为0（避免下一次计算梯度时和上一次相关）
 
 class LinearRegression(d2l.Module):
     """The linear regression model implemented with high-level APIs.
