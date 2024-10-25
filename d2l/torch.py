@@ -387,7 +387,7 @@ class LinearRegressionScratch(d2l.Module):  #@save，继承自d2l.Module类
         l = (y_hat - y) ** 2 / 2 #计算平方损失
         return l.mean() #返回平均损失的均值（一个minibatch的几个值的平均）
 
-    def configure_optimizers(self): #定义配置优化器的方法
+    def configure_optimizers(self): #定义配置优化器的方法，这里是重写了d2l.Module中的configure_optimizers方法
         return SGD([self.w, self.b], self.lr) #返回一个SGD优化器实例，传入要优化的参数（权重w和偏置b）和学习率lr    
 
 class SGD(d2l.HyperParameters):  #@save，继承自d2l.HyperParameters类
@@ -404,33 +404,27 @@ class SGD(d2l.HyperParameters):  #@save，继承自d2l.HyperParameters类
             if param.grad is not None: #如果参数的梯度不为空
                 param.grad.zero_() #设置梯度为0（避免下一次计算梯度时和上一次相关）
 
-class LinearRegression(d2l.Module):
-    """The linear regression model implemented with high-level APIs.
-
-    Defined in :numref:`sec_linear_concise`"""
-    def __init__(self, lr):
+class LinearRegression(d2l.Module):  #@save，继承自d2l.Module类
+    """利用高级API实现的线性回归模型"""
+    def __init__(self, lr): #构造函数，接受参数学习率lr
         super().__init__()
-        self.save_hyperparameters()
-        self.net = nn.LazyLinear(1)
-        self.net.weight.data.normal_(0, 0.01)
-        self.net.bias.data.fill_(0)
+        self.save_hyperparameters() #调用父类的方法，保存传入的超参数（构造函数的几个传入参数被保存为self.lr）
+        self.net = nn.LazyLinear(1) #创建一个全连接层，输出特指数为1，输入特征数会在第一次前向传播时自动确定
+        self.net.weight.data.normal_(0, 0.01) #将网络的权重初始化为均值为0，标准差为0.01的正态分布 
+        self.net.bias.data.fill_(0) #将网络的偏置初始化为0
 
-    def forward(self, X):
-        """Defined in :numref:`sec_linear_concise`"""
+    def forward(self, X): #定义前向传播方法，接受输入特征X
         return self.net(X)
 
-    def loss(self, y_hat, y):
-        """Defined in :numref:`sec_linear_concise`"""
-        fn = nn.MSELoss()
-        return fn(y_hat, y)
+    def loss(self, y_hat, y): #定义损失函数，接受预测值y_hat和真实值y
+        fn = nn.MSELoss() #创建均方误差损失函数实例
+        return fn(y_hat, y) #返回预测值y_hat和真实值y的均方误差
 
-    def configure_optimizers(self):
-        """Defined in :numref:`sec_linear_concise`"""
-        return torch.optim.SGD(self.parameters(), self.lr)
+    def configure_optimizers(self): #定义配置优化器的方法
+        return torch.optim.SGD(self.parameters(), self.lr) #返回一个SGD优化器实例，传入要优化的参数（模型的参数）和学习率lr
 
-    def get_w_b(self):
-        """Defined in :numref:`sec_linear_concise`"""
-        return (self.net.weight.data, self.net.bias.data)
+    def get_w_b(self): #定义获取网络权重和偏置的方法
+        return (self.net.weight.data, self.net.bias.data) #返回网络的权重和偏置 
 
 class FashionMNIST(d2l.DataModule):
     """The Fashion-MNIST dataset.
