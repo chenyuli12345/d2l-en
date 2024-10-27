@@ -3090,24 +3090,22 @@ def train_ch6(net, train_iter, test_iter, num_epochs, lr, device):
     print(f'{metric[2] * num_epochs / timer.sum():.1f} examples/sec '
           f'on {str(device)}')
 
-def show_images(imgs, num_rows, num_cols, titles=None, scale=1.5):
-    """Plot a list of images.
-
-    Defined in :numref:`sec_utils`"""
-    figsize = (num_cols * scale, num_rows * scale)
-    _, axes = d2l.plt.subplots(num_rows, num_cols, figsize=figsize)
-    axes = axes.flatten()
-    for i, (ax, img) in enumerate(zip(axes, imgs)):
-        try:
+def show_images(imgs, num_rows, num_cols, titles=None, scale=1.5): #接受五个参数，分别为imgs图像列表、num_rows图像显示的行数、num_cols图像显示的列数、titles每张图像的标题、scale图像的尺寸
+    """绘制一列图像 Defined in :numref:`sec_utils`"""
+    figsize = (num_cols * scale, num_rows * scale) #根据列数和行数以及缩放比例计算图像尺寸
+    _, axes = d2l.plt.subplots(num_rows, num_cols, figsize=figsize) #使用d2l.plt.subplots创建一个包含多个子图的图像窗口，其中行数为num_rows，列数为num_cols，图像窗口的尺寸为figsize，axes为子图数组
+    axes = axes.flatten() #将子图数组展平
+    for i, (ax, img) in enumerate(zip(axes, imgs)): #将子图数组与图像列表配对，返回每一个子图ax、对应图像img和序号i
+        try: #尝试将图像转换为numpy数组
             img = d2l.numpy(img)
-        except:
+        except: #如果失败，保持原样
             pass
-        ax.imshow(img)
-        ax.axes.get_xaxis().set_visible(False)
-        ax.axes.get_yaxis().set_visible(False)
-        if titles:
-            ax.set_title(titles[i])
-    return axes
+        ax.imshow(img) #在子图上绘制图像
+        ax.axes.get_xaxis().set_visible(False) #隐藏子图的x轴
+        ax.axes.get_yaxis().set_visible(False) #隐藏子图的y轴
+        if titles: #如果有标题
+            ax.set_title(titles[i]) #设置子图标题
+    return axes #返回子图数组
 
 def linreg(X, w, b):
     """The linear regression model.
