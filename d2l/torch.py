@@ -426,40 +426,36 @@ class LinearRegression(d2l.Module):  #@save，继承自d2l.Module类
     def get_w_b(self): #定义获取网络权重和偏置的方法
         return (self.net.weight.data, self.net.bias.data) #返回网络的权重和偏置 
 
-class FashionMNIST(d2l.DataModule):
-    """The Fashion-MNIST dataset.
+class FashionMNIST(d2l.DataModule): #继承自d2l.DataModule类
+    """Fashion-MNIST数据集 Defined in :numref:`sec_fashion_mnist`"""
+    def __init__(self, batch_size=64, resize=(28, 28)): #构造函数，接受批量大小和调整图像大小作为参数，得到self.train和self.val，分别为训练集和验证集，长度为60000和10000，其每个数据是一个元组，元组第一个元素为图像数据（形状为[通道，高度，宽度]），第二个元素为标签
+        super().__init__() 
+        self.save_hyperparameters() #调用父类的方法，保存传入的超参数（构造函数的几个传入参数被保存为self.batch_size和self.resize）
+        #创建一个包含ToTensor转换和Resize转换两个转换操作的列表，然后将列表中的多个转换操作组合成一个Compose实例trans，按顺序依次应用。
+        #ToTensor转换将图像从PIL图像或numpy数组转换为PyTorch张量，并将像素值缩放到[0, 1]范围内。Resize转换则用于将图像的高度和宽度调整为给定的resize尺寸
+        trans = transforms.Compose([transforms.Resize(resize), transforms.ToTensor()])
 
-    Defined in :numref:`sec_fashion_mnist`"""
-    def __init__(self, batch_size=64, resize=(28, 28)):
-        super().__init__()
-        self.save_hyperparameters()
-        trans = transforms.Compose([transforms.Resize(resize),
-                                    transforms.ToTensor()])
-        self.train = torchvision.datasets.FashionMNIST(
-            root=self.root, train=True, transform=trans, download=True)
-        self.val = torchvision.datasets.FashionMNIST(
-            root=self.root, train=False, transform=trans, download=True)
+        #加载训练集，目录为root（来源于d2l.DataModule），如果没有则下载，同时对每个样本进行上面的trans转换
+        self.train = torchvision.datasets.FashionMNIST(root=self.root, train=True, transform=trans, download=True)
+        #加载测试集（验证集），目录为root（来源于d2l.DataModule），如果没有则下载，同时对每个样本进行上面的trans
+        self.val = torchvision.datasets.FashionMNIST(root=self.root, train=False, transform=trans, download=True)
 
-    def text_labels(self, indices):
-        """Return text labels.
-    
-        Defined in :numref:`sec_fashion_mnist`"""
-        labels = ['t-shirt', 'trouser', 'pullover', 'dress', 'coat',
-                  'sandal', 'shirt', 'sneaker', 'bag', 'ankle boot']
-        return [labels[int(i)] for i in indices]
+    def text_labels(self, indices): #将数字标签转换为文本标签的方法，接受一个索引列表indices作为参数
+        """返回FashionMNIST文本标签 Defined in :numref:`sec_fashion_mnist`"""
+        labels = ['t-shirt', 'trouser', 'pullover', 'dress', 'coat', 'sandal', 'shirt', 'sneaker', 'bag', 'ankle boot'] #定义标签列表
+        return [labels[int(i)] for i in indices] #将标签转换为对应的文本标签，首先遍历labels中的每一个标签，如何将标签i转换为整数，从自定义的标签文本列表中获取对应的文本标签
+        #相当于根据数据集的标签i，返回对应的文本标签（排序好的）的list 
 
-    def get_dataloader(self, train):
-        """Defined in :numref:`sec_fashion_mnist`"""
-        data = self.train if train else self.val
-        return torch.utils.data.DataLoader(data, self.batch_size, shuffle=train,
-                                           num_workers=self.num_workers)
+    def get_dataloader(self, train): #重写d2l.DataModule中的get_dataloader方法，接受一个train参数（是否是训练），返回一个DataLoader实例（可迭代数据对象）
+        data = self.train if train else self.val #如果train为True，返回训练集，否则返回验证集（来源于构造函数）
+        return torch.utils.data.DataLoader(data, self.batch_size, shuffle=train, num_workers=self.num_workers) #将数据集对象data封装成可迭代对象的类，指定每个批次的样本数量（来源于FashionMNIST方法）以及是否打乱数据（来源于get_dataloader方法的输入），并且设置用于数据加载的子进程数量（来源于d2l.DataModule）
 
-    def visualize(self, batch, nrows=1, ncols=8, labels=[]):
-        """Defined in :numref:`sec_fashion_mnist`"""
-        X, y = batch
-        if not labels:
-            labels = self.text_labels(y)
-        d2l.show_images(X.squeeze(1), nrows, ncols, titles=labels)
+    def visualize(self, batch, nrows=1, ncols=8, labels=[]): #定义visualize方法，接受一个批次的数据batch，以及可选的行数nrows、列数ncols和标签列表labels
+        X, y = batch #将一个批次的数据分别赋值给X和y
+        if not labels: #如果标签列表为空
+            labels = self.text_labels(y) #调用text_labels方法，将标签y转换为文本标签
+        d2l.show_images(X.squeeze(1), nrows, ncols, titles=labels) #调用d2l.show_images函数，将X中的图像数据展示出来，去掉第二个维度（即通道），指定行数和列数，以及标签列表
+
 
 def show_images(imgs, num_rows, num_cols, titles=None, scale=1.5):
     """Plot a list of images.
@@ -468,10 +464,8 @@ def show_images(imgs, num_rows, num_cols, titles=None, scale=1.5):
     raise NotImplementedError
 
 class Classifier(d2l.Module):
-    """The base class of classification models.
-
-    Defined in :numref:`sec_classification`"""
-    def validation_step(self, batch):
+    """分类模型的基类  Defined in :numref:`sec_classification`"""
+    def validation_step(self, batch): #重写d2l.Module中的validation_step方法，接受一个批次的数据batch
         Y_hat = self(*batch[:-1])
         self.plot('loss', self.loss(Y_hat, batch[-1]), train=False)
         self.plot('acc', self.accuracy(Y_hat, batch[-1]), train=False)
