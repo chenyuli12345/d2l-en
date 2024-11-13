@@ -465,26 +465,22 @@ def show_images(imgs, num_rows, num_cols, titles=None, scale=1.5):
 
 class Classifier(d2l.Module):
     """分类模型的基类  Defined in :numref:`sec_classification`"""
-    def validation_step(self, batch): #重写d2l.Module中的validation_step方法，接受一个批次的数据batch
-        Y_hat = self(*batch[:-1])
-        self.plot('loss', self.loss(Y_hat, batch[-1]), train=False)
-        self.plot('acc', self.accuracy(Y_hat, batch[-1]), train=False)
+    def validation_step(self, batch): #重写d2l.Module中的validation_step方法，接受一个批次的数据batch作为参数
+        Y_hat = self(*batch[:-1]) #调用模型的__call__方法，传入batch中除了最后一个元素的所有元素（解包后），得到预测值Y_hat,其第二个维度存储了每个类别的预测得分
+        self.plot('loss', self.loss(Y_hat, batch[-1]), train=False) #调用loss方法（具体需要自定义，也是d2l.Module中的loss方法的重写），传入Y_hat和batch的最后一个元素（来源于DataLoader，一般是标签），得到损失函数值。然后调用d2l.Module中的plot方法，传入损失函数值，train参数为False
+        self.plot('acc', self.accuracy(Y_hat, batch[-1]), train=False) #调用accuracy方法（具体需要自定义），传入Y_hat和batch的最后一个元素，得到准确率。然后调用d2l.Module中的plot方法，传入准确率，train参数为False
 
-    def accuracy(self, Y_hat, Y, averaged=True):
-        """Compute the number of correct predictions.
-    
-        Defined in :numref:`sec_classification`"""
-        Y_hat = d2l.reshape(Y_hat, (-1, Y_hat.shape[-1]))
-        preds = d2l.astype(d2l.argmax(Y_hat, axis=1), Y.dtype)
-        compare = d2l.astype(preds == d2l.reshape(Y, -1), d2l.float32)
-        return d2l.reduce_mean(compare) if averaged else compare
+    def accuracy(self, Y_hat, Y, averaged=True): #计算预测正确的数量，接受预测值Y_hat、标签Y和是否平均化的参数averaged
+        """Compute the number of correct predictions."""
+        Y_hat = Y_hat.reshape((-1, Y_hat.shape[-1])) #将预测值Y_hat的形状调整，保持最后一个维度大小不变（若原始形状是(batch_size, num_classes)，那么该操作不会改变Y_hat的形状。但是若Y_hat的形状更复杂如(batch_size, num_steps, num_classes)，那么该操作会将其变为(batch_size*num_steps,num_classes)
+        preds = Y_hat.argmax(axis=1).type(Y.dtype) #返回预测值Y_hat中每一行中最大元素的索引，即预测的类别，然后将数据类型转换为标签Y的数据类型（为了后面的==运算服务）
+        compare = (preds == Y.reshape(-1)).type(torch.float32) #将预测值preds和标签进行比较（先将Y转换为1维张量，匹配preds的形状），得到一个布尔张量，1.0表示预测正确，0.0表示预测错误
+        return compare.mean() if averaged else compare #如果输入参数averaged为true，返回正确预测的比例，否则返回一个布尔张量（每个图像是否预测正确）
 
-    def loss(self, Y_hat, Y, averaged=True):
-        """Defined in :numref:`sec_softmax_concise`"""
-        Y_hat = d2l.reshape(Y_hat, (-1, Y_hat.shape[-1]))
-        Y = d2l.reshape(Y, (-1,))
-        return F.cross_entropy(
-            Y_hat, Y, reduction='mean' if averaged else 'none')
+    def loss(self, Y_hat, Y, averaged=True): #重写d2l.Module中的loss方法（交叉熵损失），接受两个参数，第一个参数为数据样本，包含所有数据样本的预测概率（每个样本是一个概率分布列表），第二个参数为标签向量（即样本所属类别），以及一个可选的参数averaged（是否求平均）
+        Y_hat = Y_hat.reshape((-1, Y_hat.shape[-1])) #将Y_hat重塑为二维张量，假设原始形状为 (batch_size, num_samples, num_classes)，则重塑后为 (batch_size*num_samples, num_classes)
+        Y = Y.reshape((-1,)) #将Y重塑为一个一维张量，假设原始形状为 (batch_size, num_samples)，则重塑后为 (batch_size*num_samples,)
+        return F.cross_entropy(Y_hat, Y, reduction='mean' if averaged else 'none') #传入Y_hat和Y得到交叉熵损失，根据传入参数average判断是返回小批量的交叉熵平均损失还是每个样本的损失，默认返回平均损失
 
     def layer_summary(self, X_shape):
         """Defined in :numref:`sec_lenet`"""
@@ -493,18 +489,16 @@ class Classifier(d2l.Module):
             X = layer(X)
             print(layer.__class__.__name__, 'output shape:\t', X.shape)
 
-class SoftmaxRegression(d2l.Classifier):
-    """The softmax regression model.
+class SoftmaxRegression(d2l.Classifier):  #@save，继承自d2l.Classifier类
+    """softmax回归模型"""
+    def __init__(self, num_outputs, lr): #构造函数，接受输出数num_outputs和学习率lr作为参数
+        super().__init__() #调用父类的构造函数
+        self.save_hyperparameters() #保存传入的超参数（构造函数的几个传入参数被保存为self.num_outputs和self.lr）
+        self.net = nn.Sequential(nn.Flatten(), 
+                                 nn.LazyLinear(num_outputs)) #创建一个Sequential实例，包含一个Flatten层和一个全连接LazyLinear层，Flatten层用于将输入数据展平，LazyLinear的输出数为num_outputs
 
-    Defined in :numref:`sec_softmax_concise`"""
-    def __init__(self, num_outputs, lr):
-        super().__init__()
-        self.save_hyperparameters()
-        self.net = nn.Sequential(nn.Flatten(),
-                                 nn.LazyLinear(num_outputs))
-
-    def forward(self, X):
-        return self.net(X)
+    def forward(self, X): #重写d2l.Module中的forward方法，接受输入数据X作为参数
+        return self.net(X) #调用Sequential实例的__call__方法，传入X，得到模型输出
 
 def cpu():
     """Get the CPU device.
@@ -1142,65 +1136,49 @@ class AttentionDecoder(d2l.Decoder):
         raise NotImplementedError
 
 class MultiHeadAttention(d2l.Module):
-    """Multi-head attention.
+    """多头注意力机制."""
+    def __init__(self, num_hiddens, num_heads, dropout, bias=False, **kwargs): #构造函数，接受num_hiddens隐藏单元数（方法里的p_o），num_heads注意力头数，dropout丢弃概率，bias是否使用偏置
+        super().__init__() #调用父类d2l.Module的构造函数
+        self.num_heads = num_heads #初始化注意力头数
+        self.attention = d2l.DotProductAttention(dropout) #初始化注意力评分函数为缩放点积注意力
+        self.W_q = nn.LazyLinear(num_hiddens, bias=bias) #初始化查询的权重矩阵，输出维度为num_hiddens，是否使用偏置由bias决定
+        self.W_k = nn.LazyLinear(num_hiddens, bias=bias) #初始化键的权重矩阵，输出维度为num_hiddens，是否使用偏置由bias决定
+        self.W_v = nn.LazyLinear(num_hiddens, bias=bias) #初始化值的权重矩阵，输出维度为num_hiddens，是否使用偏置由bias决定
+        self.W_o = nn.LazyLinear(num_hiddens, bias=bias) #初始化多头注意力输出的权重矩阵，输出维度为num_hiddens，是否使用偏置由bias决定
 
-    Defined in :numref:`sec_multihead-attention`"""
-    def __init__(self, num_hiddens, num_heads, dropout, bias=False, **kwargs):
-        super().__init__()
-        self.num_heads = num_heads
-        self.attention = d2l.DotProductAttention(dropout)
-        self.W_q = nn.LazyLinear(num_hiddens, bias=bias)
-        self.W_k = nn.LazyLinear(num_hiddens, bias=bias)
-        self.W_v = nn.LazyLinear(num_hiddens, bias=bias)
-        self.W_o = nn.LazyLinear(num_hiddens, bias=bias)
-
-    def forward(self, queries, keys, values, valid_lens):
-        # Shape of queries, keys, or values:
-        # (batch_size, no. of queries or key-value pairs, num_hiddens)
-        # Shape of valid_lens: (batch_size,) or (batch_size, no. of queries)
-        # After transposing, shape of output queries, keys, or values:
-        # (batch_size * num_heads, no. of queries or key-value pairs,
-        # num_hiddens / num_heads)
-        queries = self.transpose_qkv(self.W_q(queries))
+    def forward(self, queries, keys, values, valid_lens): 
+        #定义前向传播函数，接受四个参数，分别为查询，键，值，有效长度，其中valid_lens的形状为: (batch_size,)或(batch_size, 查询的数量)；查询、键、值的形状为：(batch_size, 查询/键/值的数量, 查询/键/值的长度)
+        
+        #经过W（全连接层）后，查询、键和值的形状分别为：(batch_size,查询/键/值的数量,num_hiddens)
+        #转换后,查询、键和值的输出的形状分别为:(batch_size*注意力头数,查询或键值对的数量,num_hiddens/注意力头数)
+        queries = self.transpose_qkv(self.W_q(queries)) 
         keys = self.transpose_qkv(self.W_k(keys))
         values = self.transpose_qkv(self.W_v(values))
+        
 
         if valid_lens is not None:
-            # On axis 0, copy the first item (scalar or vector) for num_heads
-            # times, then copy the next item, and so on
-            valid_lens = torch.repeat_interleave(
-                valid_lens, repeats=self.num_heads, dim=0)
+            #在轴0上，将第一个元素（标量或向量）复制num_heads次，然后复制下一个元素，以此类推。
+            valid_lens = torch.repeat_interleave(valid_lens, repeats=self.num_heads, dim=0)
 
-        # Shape of output: (batch_size * num_heads, no. of queries,
-        # num_hiddens / num_heads)
+        #经过点积注意力评分函数的输出形状为(batch_size*注意力头数, 查询的数量, num_hiddens/注意力头数)
         output = self.attention(queries, keys, values, valid_lens)
-        # Shape of output_concat: (batch_size, no. of queries, num_hiddens)
+        #将输出进行之前qkv转换的反转，形状变为(batch_size, 查询的数量, num_hiddens)，本质是对多个注意力输出进行拼接
         output_concat = self.transpose_output(output)
-        return self.W_o(output_concat)
+
+        return self.W_o(output_concat) #将拼接后的注意力输出通过全连接层，得到多头注意力的输出，形状(batch_size, 查询的数量, num_hiddens)
 
     def transpose_qkv(self, X):
-        """Transposition for parallel computation of multiple attention heads.
-    
-        Defined in :numref:`sec_multihead-attention`"""
-        # Shape of input X: (batch_size, no. of queries or key-value pairs,
-        # num_hiddens). Shape of output X: (batch_size, no. of queries or
-        # key-value pairs, num_heads, num_hiddens / num_heads)
-        X = X.reshape(X.shape[0], X.shape[1], self.num_heads, -1)
-        # Shape of output X: (batch_size, num_heads, no. of queries or key-value
-        # pairs, num_hiddens / num_heads)
-        X = X.permute(0, 2, 1, 3)
-        # Shape of output: (batch_size * num_heads, no. of queries or key-value
-        # pairs, num_hiddens / num_heads)
-        return X.reshape(-1, X.shape[2], X.shape[3])
-    
+        """"用于多头注意力并行计算的转置操作"""
+        # 输入X的形状: (batch_size, 查询数量或键值对数量,num_hiddens) 
+        X = X.reshape(X.shape[0], X.shape[1], self.num_heads, -1) #重塑X的形状为(batch_size, 查询数量或键值对数量, num_heads, num_hiddens / num_heads)
+        X = X.permute(0, 2, 1, 3) #交换X的第二个维度和第三个维度，形状变为(batch_size, num_heads, 查询数量或键值对数量, num_hiddens / num_heads)
+        return X.reshape(-1, X.shape[2], X.shape[3]) #返回重塑后的X，形状为(batch_size * num_heads, 查询数量或键值对数量, num_hiddens / num_heads)
 
-    def transpose_output(self, X):
-        """Reverse the operation of transpose_qkv.
-    
-        Defined in :numref:`sec_multihead-attention`"""
-        X = X.reshape(-1, self.num_heads, X.shape[1], X.shape[2])
-        X = X.permute(0, 2, 1, 3)
-        return X.reshape(X.shape[0], X.shape[1], -1)
+    def transpose_output(self, X): #输入X的形状为(batch_size * num_heads, 查询数量或键值对数量, num_hiddens / num_heads)
+        """反转transpose_qkv的操作"""
+        X = X.reshape(-1, self.num_heads, X.shape[1], X.shape[2]) #将X形状重塑为(batch_size, num_heads, 查询数量或键值对数量, num_hiddens / num_heads)
+        X = X.permute(0, 2, 1, 3) #交换X的第二个维度和第三个维度，形状变为(batch_size, 查询数量或键值对数量, num_heads, num_hiddens / num_heads)
+        return X.reshape(X.shape[0], X.shape[1], -1) #返回重塑后的X，形状变为(batch_size, 查询数量或键值对数量, num_hiddens)
 
 class PositionalEncoding(nn.Module):
     """Positional encoding.
@@ -2595,100 +2573,100 @@ def rbfkernel(x1, x2, ls=4.):
     dist = distance_matrix(np.expand_dims(x1, 1), np.expand_dims(x2, 1))
     return np.exp(-(1. / ls / 2) * (dist ** 2))
 
-class HPOTrainer(d2l.Trainer):
-    """Defined in :numref:`sec_definition_hpo`"""
-    def validation_error(self):
-        self.model.eval()
-        accuracy = 0
-        val_batch_idx = 0
-        for batch in self.val_dataloader:
-            with torch.no_grad():
-                x, y = self.prepare_batch(batch)
-                y_hat = self.model(x)
-                accuracy += self.model.accuracy(y_hat, y)
-            val_batch_idx += 1
-        return 1 -  accuracy / val_batch_idx
+class HPOTrainer(d2l.Trainer):  #@save，承自d2l.Trainer类
+    def validation_error(self): #计算验证集上的误差，定义为1-验证集所有小批次的准确率之和/验证集小批次总数
+        self.model.eval() #将模型设置为评估模式
+        accuracy = 0 #初始化准确率为0
+        val_batch_idx = 0 #初始化验证批次索引为0
+        for batch in self.val_dataloader: #遍历验证集（来源于d2l.Trainer）的每一个批次
+            with torch.no_grad(): #不追踪梯度
+                x, y = self.prepare_batch(batch) #获取一个批次的数据和标签
+                y_hat = self.model(x) #前向传播获得模型预测
+                accuracy += self.model.accuracy(y_hat, y) #计算准确率(来源于模型d2l.Classifier)
+            val_batch_idx += 1 #验证批次索引加1
+        return 1 -  accuracy / val_batch_idx #返回验证集上的误差，即1-平均准确率（所有小批次的准确率之和/小批次总数）
 
-class HPOSearcher(d2l.HyperParameters):
-    """Defined in :numref:`sec_api_hpo`"""
-    def sample_configuration() -> dict:
-        raise NotImplementedError
 
-    def update(self, config: dict, error: float, additional_info=None):
-        pass
 
-class RandomSearcher(HPOSearcher):
-    """Defined in :numref:`sec_api_hpo`"""
-    def __init__(self, config_space: dict, initial_config=None):
-        self.save_hyperparameters()
+class HPOSearcher(d2l.HyperParameters):  #@save，承自d2l.HyperParameters类
+    def sample_configuration() -> dict: #定义采样配置方法（提供新的候选超参数配置），该方法没有参数，会返回一个字典dict
+        raise NotImplementedError #该方法目前没有实现，子类需要重写
 
-    def sample_configuration(self) -> dict:
-        if self.initial_config is not None:
-            result = self.initial_config
-            self.initial_config = None
-        else:
+    def update(self, config: dict, error: float, additional_info=None): #update方法，用于更新搜索器的内部状态（然后可以利用这些记录来改进采样分布），传入超参数配置config（字典）、误差error（浮点数）和额外信息additional_info（可选参数，默认为None）
+        pass #该方法目前没有实现，pass表示什么都不做
+
+
+
+class RandomSearcher(HPOSearcher):  #@save，承自HPOSearcher类，用于实现随机搜索（高级API方法）
+    def __init__(self, config_space: dict, initial_config=None): #构造函数，传入超参数空间config_space（字典）和初始超参数配置initial_config（可选参数，默认为None）
+        self.save_hyperparameters() #保存传入的超参数（构造函数的几个传入参数被保存为self.config_space、self.initial_config属性）
+
+    def sample_configuration(self) -> dict: #重写HPOSearcher类的sample_configuration方法，返回一个字典dict
+        if self.initial_config is not None: #如果初始超参数配置不为空
+            result = self.initial_config #将初始超参数配置保存为result
+            self.initial_config = None #将初始配置self.initial_config置为None
+        else: #如果初始配置为空
             result = {
-                name: domain.rvs()
-                for name, domain in self.config_space.items()
-            }
+                name: domain.rvs() #rvs表示从对应超参数的搜索空间中随机采样一个值作为字典的值
+                for name, domain in self.config_space.items() #字典推导式，遍历config_space字典的每一个键值对（items()返回一个视图对象，包含字典中所有键值对），键为name（超参数名称），值为domain（对应超参数的搜索空间）
+            } #从超参数空间中随机采样一个超参数配置
         return result
 
-class HPOScheduler(d2l.HyperParameters):
-    """Defined in :numref:`sec_api_hpo`"""
-    def suggest(self) -> dict:
-        raise NotImplementedError
 
-    def update(self, config: dict, error: float, info=None):
-        raise NotImplementedError
 
-class BasicScheduler(HPOScheduler):
-    """Defined in :numref:`sec_api_hpo`"""
-    def __init__(self, searcher: HPOSearcher):
-        self.save_hyperparameters()
+class HPOScheduler(d2l.HyperParameters):  #@save，承自d2l.HyperParameters类
+    def suggest(self) -> dict: #定义suggest方法，该方法没有参数，会返回一个字典dict
+        raise NotImplementedError #该方法目前没有实现，子类需要重写
 
-    def suggest(self) -> dict:
-        return self.searcher.sample_configuration()
+    def update(self, config: dict, error: float, info=None): #update方法，用于更新搜索器的内部状态，传入超参数配置config（字典）、误差error（浮点数）和信息info（可选参数，默认为None）
+        raise NotImplementedError #该方法目前没有实现，子类需要重写
 
-    def update(self, config: dict, error: float, info=None):
-        self.searcher.update(config, error, additional_info=info)
+class BasicScheduler(HPOScheduler):  #@save，承自HPOScheduler类，用于实现基本的调度器（高级API方法）
+    def __init__(self, searcher: HPOSearcher): #构造函数，传入搜索器searcher（HPOSearcher类的实例）
+        self.save_hyperparameters() #保存传入的超参数（构造函数的几个传入参数被保存为self.searcher属性）
 
-class HPOTuner(d2l.HyperParameters):
-    """Defined in :numref:`sec_api_hpo`"""
-    def __init__(self, scheduler: HPOScheduler, objective: callable):
-        self.save_hyperparameters()
+    def suggest(self) -> dict: #重写HPOScheduler类的suggest方法，返回一个字典dict
+        return self.searcher.sample_configuration() #调用搜索器的sample_configuration方法（d2l.HPOSearcher），返回一个超参数配置(需要重写)
+
+    def update(self, config: dict, error: float, info=None): #重写HPOScheduler类的update方法，传入超参数配置config（字典）、误差error（浮点数）和信息info（可选参数，默认为None）
+        self.searcher.update(config, error, additional_info=info) #调用搜索器的update方法（d2l.HPOSearcher），更新搜索器的内部状态
+
+
+class HPOTuner(d2l.HyperParameters):  #@save，承自d2l.HyperParameters类
+    def __init__(self, scheduler: HPOScheduler, objective: callable): #构造函数，传入调度器scheduler（HPOScheduler类的实例）和目标函数objective（可调用对象，用于计算验证误差）
+        self.save_hyperparameters() #保存传入的超参数（构造函数的几个传入参数被保存为self.scheduler、self.objective属性）
         # Bookeeping results for plotting
-        self.incumbent = None
-        self.incumbent_error = None
-        self.incumbent_trajectory = []
-        self.cumulative_runtime = []
-        self.current_runtime = 0
-        self.records = []
+        self.incumbent = None #初始化最优超参数配置incumbent为None
+        self.incumbent_error = None #初始化最优误差incumbent_error为None
+        self.incumbent_trajectory = [] #初始化最优误差轨迹incumbent_trajectory为空列表（存储了每次迭代的验证误差（对应每一组超参数））
+        self.cumulative_runtime = [] #初始化累计运行时间cumulative_runtime为空列表
+        self.current_runtime = 0 #初始化当前运行时间current_runtime为0
+        self.records = [] #记录每次试验的结果，是一个字典，包含超参数、验证误差和运行时间
 
-    def run(self, number_of_trials):
-        for i in range(number_of_trials):
-            start_time = time.time()
-            config = self.scheduler.suggest()
-            print(f"Trial {i}: config = {config}")
-            error = self.objective(**config)
-            error = float(d2l.numpy(error.cpu()))
-            self.scheduler.update(config, error)
-            runtime = time.time() - start_time
-            self.bookkeeping(config, error, runtime)
-            print(f"    error = {error}, runtime = {runtime}")
+    def run(self, number_of_trials): #定义run方法，用于运行超参数优化，传入试验次数number_of_trials
+        for i in range(number_of_trials): #迭代number_of_trials次
+            start_time = time.time() #记录当前时间
+            config = self.scheduler.suggest() #调用调度器的suggest方法（d2l.HPOScheduler），返回一个超参数配置
+            print(f"Trial {i}: config = {config}") #打印当前试验次数和超参数配置
+            error = self.objective(**config) #调用目标函数，传入超参数配置，返回验证误差
+            error = float(error.cpu().detach().numpy()) #将验证误差转换为numpy数组，再转换为浮点数
+            self.scheduler.update(config, error) #调用调度器的update方法，传入超参数配置和验证误差，更新调度器的内部状态
+            runtime = time.time() - start_time #计算当前试验的运行时间
+            self.bookkeeping(config, error, runtime) #调用bookkeeping方法，记录当前HPO算法的性能
+            print(f"    error = {error}, runtime = {runtime}") #打印当前迭代次数的验证误差和运行时间
 
-    def bookkeeping(self, config: dict, error: float, runtime: float):
-        """Defined in :numref:`sec_api_hpo`"""
-        self.records.append({"config": config, "error": error, "runtime": runtime})
-        # Check if the last hyperparameter configuration performs better
-        # than the incumbent
+    def bookkeeping(self, config: dict, error: float, runtime: float): #定义bookkeeping方法，用于记录当前HPO算法的性能，传入超参数配置config（字典）、验证误差error（浮点数）和运行时间runtime（浮点数）
+        self.records.append({"config": config, "error": error, "runtime": runtime}) #将当前试验的超参数配置、验证误差和运行时间记录到records列表中（来源于构造函数）
+        #检查最后一个超参数配置是否比当前最优超参数配置（incumbent）表现更好
         if self.incumbent is None or self.incumbent_error > error:
-            self.incumbent = config
-            self.incumbent_error = error
-        # Add current best observed performance to the optimization trajectory
+            self.incumbent = config #将当前超参数配置设置为最优超参数配置
+            self.incumbent_error = error #将当前验证误差设置为最优验证误差
+        #将当前观察到的最佳验证误差添加到优化轨迹中
         self.incumbent_trajectory.append(self.incumbent_error)
-        # Update runtime
-        self.current_runtime += runtime
-        self.cumulative_runtime.append(self.current_runtime)
+        #更新运行时间
+        self.current_runtime += runtime #当前运行时间为上一次运行时间加上此次update的时间
+        self.cumulative_runtime.append(self.current_runtime) #将当前运行时间添加到累计运行时间列表中
+
 
 def hpo_objective_lenet(learning_rate, batch_size, max_epochs=10):
     """Defined in :numref:`sec_api_hpo`"""
