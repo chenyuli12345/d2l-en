@@ -482,12 +482,12 @@ class Classifier(d2l.Module):
         Y = Y.reshape((-1,)) #将Y重塑为一个一维张量，假设原始形状为 (batch_size, num_samples)，则重塑后为 (batch_size*num_samples,)
         return F.cross_entropy(Y_hat, Y, reduction='mean' if averaged else 'none') #传入Y_hat和Y得到交叉熵损失，根据传入参数average判断是返回小批量的交叉熵平均损失还是每个样本的损失，默认返回平均损失
 
-    def layer_summary(self, X_shape):
+    def layer_summary(self, X_shape): #用于打印神经网络每一层的输出形状，接受参数为输入数据的形状
         """Defined in :numref:`sec_lenet`"""
-        X = d2l.randn(*X_shape)
-        for layer in self.net:
-            X = layer(X)
-            print(layer.__class__.__name__, 'output shape:\t', X.shape)
+        X = d2l.randn(*X_shape) #生成一个形状为X_shape的随机张量
+        for layer in self.net: #遍历神经网络的每一层
+            X = layer(X) #将输入数据X传入每一层，得到每层的输出数据X
+            print(layer.__class__.__name__, 'output shape:\t', X.shape) #打印当前层的类名和当前层输出张量的形状
 
 class SoftmaxRegression(d2l.Classifier):  #@save，继承自d2l.Classifier类
     """softmax回归模型"""
