@@ -533,39 +533,36 @@ def try_all_gpus():
     return [gpu(i) for i in range(num_gpus())]
 
 def corr2d(X, K):
-    """Compute 2D cross-correlation.
-
+    """计算二维互相关运算。
     Defined in :numref:`sec_conv_layer`"""
-    h, w = K.shape
-    Y = d2l.zeros((X.shape[0] - h + 1, X.shape[1] - w + 1))
-    for i in range(Y.shape[0]):
+    h, w = K.shape #获取卷积核张量的高度h和宽度w
+    Y = torch.zeros((X.shape[0] - h + 1, X.shape[1] - w + 1)) #初始化输出张量，全零矩阵，形状由卷积核张量和输入张量形状决定
+    for i in range(Y.shape[0]): 
         for j in range(Y.shape[1]):
-            Y[i, j] = d2l.reduce_sum((X[i: i + h, j: j + w] * K))
+            #使用两个嵌套for循环遍历输出张量Y的每个元素
+            Y[i, j] = (X[i:i + h, j:j + w] * K).sum() #对于Y的第i行第j列个元素，计算张量X的子区域X[i:i+h,j:j+w]和卷积核张量K的按元素乘积的和
     return Y
 
 def init_cnn(module):
-    """Initialize weights for CNNs.
-
-    Defined in :numref:`sec_lenet`"""
-    if type(module) == nn.Linear or type(module) == nn.Conv2d:
-        nn.init.xavier_uniform_(module.weight)
+    """初始化cnn中的权重，Defined in :numref:`sec_lenet`"""
+    if type(module) == nn.Linear or type(module) == nn.Conv2d: #如果是全连接层或卷积层
+        nn.init.xavier_uniform_(module.weight) #使用Xavier随机初始化权重
 
 class LeNet(d2l.Classifier):
-    """The LeNet-5 model.
-
-    Defined in :numref:`sec_lenet`"""
-    def __init__(self, lr=0.1, num_classes=10):
-        super().__init__()
-        self.save_hyperparameters()
-        self.net = nn.Sequential(
-            nn.LazyConv2d(6, kernel_size=5, padding=2), nn.Sigmoid(),
-            nn.AvgPool2d(kernel_size=2, stride=2),
-            nn.LazyConv2d(16, kernel_size=5), nn.Sigmoid(),
-            nn.AvgPool2d(kernel_size=2, stride=2),
-            nn.Flatten(),
-            nn.LazyLinear(120), nn.Sigmoid(),
-            nn.LazyLinear(84), nn.Sigmoid(),
-            nn.LazyLinear(num_classes))
+    """LeNet-5模型，Defined in :numref:`sec_lenet`"""
+    def __init__(self, lr=0.1, num_classes=10): #构造函数，接受学习率lr和输出维度/类别数作为参数
+        super().__init__() #调用父类的构造函数
+        self.save_hyperparameters() ##保存传入的超参数（构造函数的几个传入参数被保存为self.lr和self.num_classes）
+        #构造网络
+        self.net = nn.Sequential(#顺序连接下面的多个层
+            nn.LazyConv2d(6, kernel_size=5, padding=2), nn.Sigmoid(), #第一层是卷积层，输入通道数延后，输出通道数为6，卷积核大小为5*5，填充为2*2，激活函数为Sigmoid
+            nn.AvgPool2d(kernel_size=2, stride=2), #第二层是平均池化层，池化窗口大小为2*2，步幅为2*2
+            nn.LazyConv2d(16, kernel_size=5), nn.Sigmoid(), #第三层是卷积层，输入通道数延后，输出通道数为16，卷积核大小为5*5，激活函数为Sigmoid
+            nn.AvgPool2d(kernel_size=2, stride=2), #第四层是平均池化层，池化窗口大小为2*2，步幅为2*2
+            nn.Flatten(), #将多维张量展平为一维张量
+            nn.LazyLinear(120), nn.Sigmoid(), #第五层是全连接层，输入维度延后，输出维度为120，激活函数为Sigmoid
+            nn.LazyLinear(84), nn.Sigmoid(), #第六层是全连接层，输入维度延后，输出维度为84，激活函数为Sigmoid
+            nn.LazyLinear(num_classes)) #第七层是全连接层，输入维度延后，输出维度为num_classes，即类别数
 
 class Residual(nn.Module):
     """The Residual block of ResNet models.
