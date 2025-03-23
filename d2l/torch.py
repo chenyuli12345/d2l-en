@@ -563,11 +563,9 @@ class LeNet(d2l.Classifier):
             nn.LazyLinear(120), nn.Sigmoid(), #第五层是全连接层，输入维度延后，输出维度为120，激活函数为Sigmoid
             nn.LazyLinear(84), nn.Sigmoid(), #第六层是全连接层，输入维度延后，输出维度为84，激活函数为Sigmoid
             nn.LazyLinear(num_classes)) #第七层是全连接层，输入维度延后，输出维度为num_classes，即类别数
-
-class Residual(nn.Module):
-    """残差网络ResNet模型的残差块
-
-    Defined in :numref:`sec_resnet`"""
+        
+class Residual(nn.Module):  #@save，继承自nn.Module
+    """残差网络ResNet模型的残差块"""
     def __init__(self, num_channels, use_1x1conv=False, strides=1): #接受几个参数，分别为卷积层的输出通道数num_channels，是否使用额外的1x1卷积层use_1x1conv，卷积层的步幅strides
         super().__init__() #调用父类的构造函数
         self.conv1 = nn.LazyConv2d(num_channels, kernel_size=3, padding=1, stride=strides) #第一个卷积层，卷积核大小为3，填充为1，步幅为strides，输出通道数为num_channels
@@ -587,36 +585,37 @@ class Residual(nn.Module):
         Y += X #将输入X与Y相加，即经过两个卷积层的输出+输入/经过1x1卷积层的输入
         return F.relu(Y) #最后使用ReLU激活函数
 
+
 class ResNeXtBlock(nn.Module):
-    """ResNeXt块
+    """The ResNeXt block.
 
     Defined in :numref:`subsec_residual-blks`"""
     def __init__(self, num_channels, groups, bot_mul, use_1x1conv=False,
-                 strides=1): #接受几个参数，分别为卷积层的输出通道数num_channels，分组数groups，每组的卷积核数量bot_mul，是否使用额外的1x1卷积层use_1x1conv，第二个卷积层的步幅strides
-        super().__init__() #调用父类的构造函数
-        bot_channels = int(round(num_channels * bot_mul)) #计算每组的卷积核数量为输出通道数*，这里round用于四舍五入
-        self.conv1 = nn.LazyConv2d(bot_channels, kernel_size=1, stride=1) #第一个卷积层，卷积核大小为1，步幅为1，输出通道数为bot_channels
+                 strides=1):
+        super().__init__()
+        bot_channels = int(round(num_channels * bot_mul))
+        self.conv1 = nn.LazyConv2d(bot_channels, kernel_size=1, stride=1)
         self.conv2 = nn.LazyConv2d(bot_channels, kernel_size=3,
                                    stride=strides, padding=1,
-                                   groups=bot_channels//groups) #第二个卷积层，卷积核大小为3，填充为1，步幅为strides，分组数为bot_channels/groups
-        self.conv3 = nn.LazyConv2d(num_channels, kernel_size=1, stride=1) #第三个卷积层，卷积核大小为1，步幅为1，输出通道数为num_channels
-        self.bn1 = nn.LazyBatchNorm2d() #第一个批量规范化层
-        self.bn2 = nn.LazyBatchNorm2d() #第二个批量规范化层
-        self.bn3 = nn.LazyBatchNorm2d() #第三个批量规范化层
-        if use_1x1conv: #如果使用额外的1x1卷积层
+                                   groups=bot_channels//groups)
+        self.conv3 = nn.LazyConv2d(num_channels, kernel_size=1, stride=1)
+        self.bn1 = nn.LazyBatchNorm2d()
+        self.bn2 = nn.LazyBatchNorm2d()
+        self.bn3 = nn.LazyBatchNorm2d()
+        if use_1x1conv:
             self.conv4 = nn.LazyConv2d(num_channels, kernel_size=1,
-                                       stride=strides) #第四个卷积层，卷积核大小为1，步幅为strides，输出通道数为num_channels
-            self.bn4 = nn.LazyBatchNorm2d() #第四个批量规范化层
-        else: #如果不使用额外的1x1卷积层
-            self.conv4 = None #第四个卷积层为空
+                                       stride=strides)
+            self.bn4 = nn.LazyBatchNorm2d()
+        else:
+            self.conv4 = None
 
-    def forward(self, X): #前向传播
-        Y = F.relu(self.bn1(self.conv1(X))) #首先是第一个卷积层，然后是批量规范化层，最后是ReLU激活函数
-        Y = F.relu(self.bn2(self.conv2(Y))) #第二个卷积层，然后是批量规范化层，最后是ReLU激活函数
-        Y = self.bn3(self.conv3(Y)) #第三个卷积层，然后是批量规范化层
-        if self.conv4: #如果使用额外的1x1卷积层
-            X = self.bn4(self.conv4(X)) #第四个卷积层，然后是批量规范化层
-        return F.relu(Y + X) #最后将输入X与经过几个卷积层得到的输出Y相加，然后使用ReLU激活函数，为新的输出
+    def forward(self, X):
+        Y = F.relu(self.bn1(self.conv1(X)))
+        Y = F.relu(self.bn2(self.conv2(Y)))
+        Y = self.bn3(self.conv3(Y))
+        if self.conv4:
+            X = self.bn4(self.conv4(X))
+        return F.relu(Y + X)
 
 class TimeMachine(d2l.DataModule):
     """The Time Machine dataset.
